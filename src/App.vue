@@ -1,7 +1,7 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
     <div
-      v-if="isTickersLoading"
+      v-if="isLoadingAvailableSymbols"
       class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"
     >
       <svg
@@ -34,9 +34,8 @@
             >
             <div class="mt-1 relative rounded-md shadow-md">
               <input
-                v-model="ticker"
-                @keydown.enter="addTicker"
-                @input="wasAdded = false"
+                v-model="symbol"
+                @keydown.enter="addSymbol"
                 type="text"
                 name="wallet"
                 id="wallet"
@@ -48,21 +47,24 @@
               class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
             >
               <span
-                v-for="(ticker, idx) of handleInput()"
+                v-for="(symbolInfo, idx) of filteredSymbols"
                 :key="idx"
-                @click="setTicker(ticker)"
+                @click="symbol = symbolInfo.symbol"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
               >
-                {{ ticker }}
+                {{ symbolInfo.symbol }}
               </span>
             </div>
-            <div v-if="wasAdded" class="text-sm text-red-600">
+            <div v-if="hasTickerBeenAddedError" class="text-sm text-red-600">
               This ticker has already been added
+            </div>
+            <div v-if="!filteredSymbols.length" class="text-sm text-red-600">
+              Symbol {{ symbol }} can not be added
             </div>
           </div>
         </div>
         <button
-          @click.stop="addTicker"
+          @click="addSymbol"
           type="button"
           class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
         >
@@ -83,29 +85,35 @@
         </button>
       </section>
 
-      <template v-if="tickers.length">
+      <template v-if="symbols.length">
+        <input placeholder="filter tickers" />
+        <div>
+          <button
+            class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Back
+          </button>
+          <button
+            class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Forward
+          </button>
+        </div>
         <hr class="w-full border-t border-gray-600 my-4" />
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="(ticker, idx) of tickers"
+            v-for="(symbol, idx) of symbols"
             :key="idx"
-            @click="handleSelect(ticker.name)"
-            :class="{
-              'border-4': ticker.name === selectedTicker,
-            }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
-                {{ ticker.name }} - USD
+                {{ symbol.baseAsset }} - {{ symbol.quoteAsset }}
               </dt>
-              <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ ticker.price }}
-              </dd>
+              <dd class="mt-1 text-3xl font-semibold text-gray-900">"-"</dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
             <button
-              @click="handleRemove(ticker)"
               class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
             >
               <svg
@@ -127,9 +135,9 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      <section v-if="selectedTicker" class="relative">
+      <section v-if="selectedSymbol" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ selectedTicker }} - USD
+          SYMBOL - USDT
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div class="bg-purple-800 border w-10 h-24"></div>
@@ -137,11 +145,7 @@
           <div class="bg-purple-800 border w-10 h-48"></div>
           <div class="bg-purple-800 border w-10 h-16"></div>
         </div>
-        <button
-          @click="selectedTicker = null"
-          type="button"
-          class="absolute top-0 right-0"
-        >
+        <button type="button" class="absolute top-0 right-0">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -170,66 +174,70 @@
 </template>
 
 <script>
-import { fetchTickers } from "./api.js";
+import { fetchSymbolsFromBinance, subscribeToTicker } from "./api.js";
 
 export default {
-  name: "App",
   data() {
     return {
-      ticker: "",
-      tickers: [],
-      selectedTicker: null,
-      wasAdded: false,
-      isTickersLoading: true,
-      availableTickers: [],
+      symbol: "",
+      symbols: [],
+      availableSymbols: [],
+      isLoadingAvailableSymbols: true,
+      isTickerExistError: false,
+      hasTickerBeenAddedError: false,
+      selectedSymbol: null,
     };
   },
+  async created() {
+    const availableSymbols = await fetchSymbolsFromBinance();
+
+    this.isLoadingAvailableSymbols = false;
+    this.availableSymbols = availableSymbols;
+  },
+  computed: {
+    filteredSymbols() {
+      if (!this.symbol) return this.availableSymbols.slice(0, 4);
+
+      const includeSymbolName = (symbolInfo) =>
+        symbolInfo.symbol.includes(this.symbol.toUpperCase());
+
+      return this.availableSymbols.filter(includeSymbolName).slice(0, 4);
+    },
+  },
+  watch: {
+    filteredSymbols() {
+      this.filteredSymbols.length
+        ? (this.isTickerExistError = true)
+        : (this.isTickerExistError = false);
+    },
+    symbol() {
+      this.symbol = this.symbol.trim();
+    },
+  },
   methods: {
-    addTicker() {
-      const tickerName = this.ticker.trim();
-      if (!tickerName.length) return;
-
-      const wasAdded = this.tickers.find(
-        (ticker) => ticker.name === tickerName
-      );
-
-      if (wasAdded) {
-        this.wasAdded = true;
+    addSymbol() {
+      if (!this.symbol) return;
+      if (!this.filteredSymbols.length) {
+        this.isTickerExistError = false;
         return;
       }
 
-      const newTicker = {
-        name: tickerName,
+      // If availableSymbols.length > 1 we can peek first
+      const candidate = this.filteredSymbols[0];
+
+      if (candidate in this.symbols) {
+        this.hasTickerBeenAddedError = true;
+        return;
+      }
+
+      const newSymbol = {
+        ...candidate,
         price: "-",
       };
 
-      this.tickers.push(newTicker);
-      this.ticker = "";
+      this.symbols.push(newSymbol);
+      this.symbol = "";
     },
-    handleSelect(ticker) {
-      this.selectedTicker = ticker;
-    },
-    handleRemove(tickerToRemove) {
-      this.tickers = this.tickers.filter((ticker) => ticker !== tickerToRemove);
-    },
-    handleInput() {
-      return this.availableTickers
-        .filter((tickerName) =>
-          tickerName.includes(this.ticker.trim().toUpperCase())
-        )
-        .slice(0, 4);
-    },
-    setTicker(tickerName) {
-      this.ticker = tickerName;
-    },
-  },
-  created() {
-    fetchTickers().then(
-      (availableTickers) => (
-        (this.isTickersLoading = false),
-        (this.availableTickers = availableTickers)
-      )
-    );
   },
 };
 </script>
