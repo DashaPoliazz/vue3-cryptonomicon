@@ -24,38 +24,57 @@ export const fetchSymbolsFromBinance = () => {
   return symbols;
 };
 
+const socket = new WebSocket("wss://stream.binance.com:9443/ws");
 const tickersHandlers = new Map();
 
-export const subscribeToTicker = (ticker, cb) => {
-  const socket = new WebSocket(
-    `wss://stream.binance.com:9443/ws/${ticker}@trade`
+socket.addEventListener("message", (e) => {
+  const { s: symbolName, p: newPrice } = JSON.parse(e.data);
+  if (newPrice === undefined) {
+    return;
+  }
+
+  const handlers = tickersHandlers.get(symbolName.toLowerCase()) ?? [];
+  handlers.forEach((cb) => cb(newPrice));
+});
+
+const sendMessageToWebSocket = (message) => {
+  const stringifiedMessage = JSON.stringify(message);
+
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(stringifiedMessage);
+    return;
+  }
+
+  socket.addEventListener(
+    "open",
+    () => {
+      socket.send(stringifiedMessage);
+    },
+    { once: true }
   );
+};
 
-  cb.socket = socket;
-
-  const subscribers = tickersHandlers.get(ticker) ?? [];
-  tickersHandlers.set(ticker, [...subscribers, cb]);
-
-  socket.addEventListener("message", (e) => {
-    const { p: newPrice } = JSON.parse(e.data);
-
-    if (newPrice === undefined) return;
-
-    const handlers = tickersHandlers.get(ticker) ?? [];
-
-    handlers.forEach((fn) => fn(newPrice));
+const subscribeToSymbolOnWS = (symbolName) => {
+  sendMessageToWebSocket({
+    method: "SUBSCRIBE",
+    params: [`${symbolName}@trade`],
+    id: 1,
+  });
+};
+const unsubscribeFromSymbolOnWS = (symbolName) => {
+  sendMessageToWebSocket({
+    method: "UNSUBSCRIBE",
+    params: [`${symbolName}@trade`],
+    id: 312,
   });
 };
 
-export const unsubscribeFromTickerOnWS = (ticker) => {
-  const subscribers = tickersHandlers.get(ticker) ?? [];
-
-  tickersHandlers.delete(ticker);
-  subscribers.forEach((cb) => {
-    const socket = cb.socket;
-
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.close();
-    }
-  });
+export const subscribeToSymbol = (symbolName, cb) => {
+  const subscribers = tickersHandlers.get(symbolName) ?? [];
+  tickersHandlers.set(symbolName, [...subscribers, cb]);
+  subscribeToSymbolOnWS(symbolName);
+};
+export const unsubscribeFromSymbol = (symbolName) => {
+  tickersHandlers.delete(symbolName);
+  unsubscribeFromSymbolOnWS(symbolName);
 };

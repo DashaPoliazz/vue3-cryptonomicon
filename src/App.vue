@@ -47,7 +47,7 @@
               class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
             >
               <span
-                v-for="(symbolInfo, idx) of filteredSymbols"
+                v-for="(symbolInfo, idx) of matchedSymbols"
                 :key="idx"
                 @click="symbol = symbolInfo.symbol"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
@@ -58,7 +58,7 @@
             <div v-if="hasTickerBeenAddedError" class="text-sm text-red-600">
               This ticker has already been added
             </div>
-            <div v-if="!filteredSymbols.length" class="text-sm text-red-600">
+            <div v-if="!matchedSymbols.length" class="text-sm text-red-600">
               Symbol {{ symbol }} can not be added
             </div>
           </div>
@@ -86,14 +86,18 @@
       </section>
 
       <template v-if="symbols.length">
-        <input placeholder="filter tickers" />
+        <input v-model="filter" placeholder="filter symbol" />
         <div>
           <button
+            v-if="page > 1"
+            @click="page -= 1"
             class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
           >
             Back
           </button>
           <button
+            v-if="filteredSymbols.length > endIndex"
+            @click="page += 1"
             class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
           >
             Forward
@@ -102,18 +106,25 @@
         <hr class="w-full border-t border-gray-600 my-4" />
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="(symbol, idx) of symbols"
+            v-for="(symbol, idx) of paginatedSymbols"
+            @click="selectedSymbol = symbol"
             :key="idx"
+            :class="{
+              'border-4': selectedSymbol === symbol,
+            }"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
                 {{ symbol.baseAsset }} - {{ symbol.quoteAsset }}
               </dt>
-              <dd class="mt-1 text-3xl font-semibold text-gray-900">"-"</dd>
+              <dd class="mt-1 text-3xl font-semibold text-gray-900">
+                {{ formatPrice(symbol.price) }}
+              </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
             <button
+              @click="removeSymbol(symbol.symbol)"
               class="flex items-center justify-center font-medium w-full bg-gray-100 px-4 py-4 sm:px-6 text-md text-gray-500 hover:text-gray-600 hover:bg-gray-200 hover:opacity-20 transition-all focus:outline-none"
             >
               <svg
@@ -137,7 +148,7 @@
       </template>
       <section v-if="selectedSymbol" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          SYMBOL - USDT
+          {{ selectedSymbol.baseAsset }} - {{ selectedSymbol.quoteAsset }}
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div class="bg-purple-800 border w-10 h-24"></div>
@@ -145,7 +156,11 @@
           <div class="bg-purple-800 border w-10 h-48"></div>
           <div class="bg-purple-800 border w-10 h-16"></div>
         </div>
-        <button type="button" class="absolute top-0 right-0">
+        <button
+          @click.stop="selectedSymbol = null"
+          type="button"
+          class="absolute top-0 right-0"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -174,7 +189,14 @@
 </template>
 
 <script>
-import { fetchSymbolsFromBinance, subscribeToTicker } from "./api.js";
+import {
+  fetchSymbolsFromBinance,
+  subscribeToSymbol,
+  unsubscribeFromSymbol,
+} from "./api.js";
+
+const LOCALSTORAGE_KEY = "CRYPTONOMICON";
+const SYMBOLS_PER_PAGE = 6;
 
 export default {
   data() {
@@ -186,16 +208,32 @@ export default {
       isTickerExistError: false,
       hasTickerBeenAddedError: false,
       selectedSymbol: null,
+      filter: "",
+      page: 1,
     };
   },
   async created() {
     const availableSymbols = await fetchSymbolsFromBinance();
-
     this.isLoadingAvailableSymbols = false;
     this.availableSymbols = availableSymbols;
+
+    const savedSymbols = this.getFromLocalStorage(LOCALSTORAGE_KEY);
+    if (savedSymbols.length) {
+      this.symbols = savedSymbols;
+      this.symbols.forEach((symbol) =>
+        subscribeToSymbol(symbol.symbol.toLowerCase(), (newPrice) =>
+          this.updateSymbolPrice(symbol.symbol, newPrice)
+        )
+      );
+    }
+
+    const currentURL = new URL(window.location);
+    const { filter, page } = Object.fromEntries(currentURL.searchParams);
+    if (filter) this.filter = filter;
+    if (page) this.page = page;
   },
   computed: {
-    filteredSymbols() {
+    matchedSymbols() {
       if (!this.symbol) return this.availableSymbols.slice(0, 4);
 
       const includeSymbolName = (symbolInfo) =>
@@ -203,29 +241,77 @@ export default {
 
       return this.availableSymbols.filter(includeSymbolName).slice(0, 4);
     },
+    filteredSymbols() {
+      return this.symbols.filter((symbol) =>
+        symbol.symbol.includes(this.filter.toUpperCase())
+      );
+    },
+    startIndex() {
+      return (this.page - 1) * SYMBOLS_PER_PAGE;
+    },
+    endIndex() {
+      return this.page * SYMBOLS_PER_PAGE;
+    },
+    paginatedSymbols() {
+      return this.filteredSymbols.slice(this.startIndex, this.endIndex);
+    },
   },
   watch: {
-    filteredSymbols() {
-      this.filteredSymbols.length
+    matchedSymbols() {
+      this.matchedSymbols.length
         ? (this.isTickerExistError = true)
         : (this.isTickerExistError = false);
     },
     symbol() {
       this.symbol = this.symbol.trim();
+      this.hasTickerBeenAddedError = false;
+    },
+    filter() {
+      this.filter = this.filter.trim();
+      window.history.pushState(
+        null,
+        window.document,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      );
+    },
+    page() {
+      window.history.pushState(
+        null,
+        window.document,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      );
     },
   },
   methods: {
+    updateSymbolPrice(symbolName, newPrice) {
+      this.symbols
+        .filter((symbol) => symbol.symbol === symbolName)
+        .forEach((symbol) => {
+          symbol.price = newPrice;
+        });
+    },
+    formatPrice(price) {
+      if (price === "-") return price;
+
+      return price > 1
+        ? Number(price).toFixed(2)
+        : Number(price).toPrecision(4);
+    },
     addSymbol() {
       if (!this.symbol) return;
-      if (!this.filteredSymbols.length) {
+      if (!this.matchedSymbols.length) {
         this.isTickerExistError = false;
         return;
       }
 
       // If availableSymbols.length > 1 we can peek first
-      const candidate = this.filteredSymbols[0];
+      const candidate = this.matchedSymbols[0];
 
-      if (candidate in this.symbols) {
+      const hasSymbolAlreadyBeenAdded = this.symbols.find(
+        (symbol) => symbol.symbol === candidate.symbol
+      );
+
+      if (hasSymbolAlreadyBeenAdded) {
         this.hasTickerBeenAddedError = true;
         return;
       }
@@ -235,8 +321,31 @@ export default {
         price: "-",
       };
 
-      this.symbols.push(newSymbol);
+      this.saveToLocalStorage(LOCALSTORAGE_KEY, [...this.symbols, newSymbol]);
+      this.symbols = [...this.symbols, newSymbol];
       this.symbol = "";
+
+      const symbolName = newSymbol.symbol;
+      subscribeToSymbol(symbolName.toLowerCase(), (newPrice) =>
+        this.updateSymbolPrice(symbolName, newPrice)
+      );
+    },
+    removeSymbol(symbolToRemove) {
+      this.symbols = this.symbols.filter(
+        (symbol) => symbol.symbol !== symbolToRemove
+      );
+      unsubscribeFromSymbol(symbolToRemove.toLowerCase());
+      this.saveToLocalStorage(LOCALSTORAGE_KEY, this.symbols);
+    },
+    saveToLocalStorage(key, itemsToSave) {
+      const stringifiedItems = JSON.stringify(itemsToSave);
+
+      localStorage.setItem(key, stringifiedItems);
+    },
+    getFromLocalStorage(key) {
+      const items = JSON.parse(localStorage.getItem(key));
+
+      return items ?? [];
     },
   },
 };
