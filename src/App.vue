@@ -107,7 +107,7 @@
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
             v-for="(symbol, idx) of paginatedSymbols"
-            @click="selectedSymbol = symbol"
+            @click="handleSymbolClick(symbol)"
             :key="idx"
             :class="{
               'border-4': selectedSymbol === symbol,
@@ -146,15 +146,18 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      <section v-if="selectedSymbol" class="relative">
+      <section v-if="selectedSymbol" ref="chart" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selectedSymbol.baseAsset }} - {{ selectedSymbol.quoteAsset }}
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
-          <div class="bg-purple-800 border w-10 h-24"></div>
-          <div class="bg-purple-800 border w-10 h-32"></div>
-          <div class="bg-purple-800 border w-10 h-48"></div>
-          <div class="bg-purple-800 border w-10 h-16"></div>
+          <div
+            v-for="(percent, idx) of normalizedGraph"
+            ref="chartElement"
+            :key="{ idx }"
+            :style="{ height: `${percent}%` }"
+            class="bg-purple-800 border w-10"
+          ></div>
         </div>
         <button
           @click.stop="selectedSymbol = null"
@@ -204,12 +207,14 @@ export default {
       symbol: "",
       symbols: [],
       availableSymbols: [],
+      chart: [],
       isLoadingAvailableSymbols: true,
       isTickerExistError: false,
       hasTickerBeenAddedError: false,
       selectedSymbol: null,
       filter: "",
       page: 1,
+      maxGraphElements: 500,
     };
   },
   async created() {
@@ -255,6 +260,18 @@ export default {
     paginatedSymbols() {
       return this.filteredSymbols.slice(this.startIndex, this.endIndex);
     },
+    normalizedGraph() {
+      const maxValue = Math.max(...this.chart);
+      const minValue = Math.min(...this.chart);
+
+      if (maxValue === minValue) {
+        return this.chart.map(() => 50);
+      }
+
+      return this.chart.map(
+        (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      );
+    },
   },
   watch: {
     matchedSymbols() {
@@ -282,11 +299,34 @@ export default {
       );
     },
   },
+  mounted() {
+    window.addEventListener("resize", this.calculateMaxGraphElements);
+  },
+  beforeUnmount() {
+    window.removeEventListener("resize", this.calculateMaxGraphElements);
+  },
   methods: {
+    calculateMaxGraphElements() {
+      if (!this.selectedSymbol) return;
+
+      this.maxGraphElements = this.$refs.chart.clientWidth / 38;
+    },
+    handleSymbolClick(symbol) {
+      this.selectedSymbol = symbol;
+      this.chart = [];
+    },
     updateSymbolPrice(symbolName, newPrice) {
       this.symbols
         .filter((symbol) => symbol.symbol === symbolName)
         .forEach((symbol) => {
+          if (symbol.symbol === this.selectedSymbol?.symbol) {
+            this.chart.push(newPrice);
+
+            while (this.chart.length > this.maxGraphElements) {
+              this.chart.shift();
+            }
+          }
+
           symbol.price = newPrice;
         });
     },
