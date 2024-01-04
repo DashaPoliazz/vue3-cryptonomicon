@@ -130,6 +130,7 @@ export default {
       selectedTicker: null,
     };
   },
+  created() {},
   mounted() {
     const savedTickers = localStorageManager.read();
     if (savedTickers) {
@@ -138,6 +139,16 @@ export default {
         this.subscribeToTickerUpdate(ticker);
       });
     }
+
+    const windowData = Object.fromEntries(
+      new URL(window.location.href).searchParams.entries()
+    );
+    const WINDOW_DATA_KEYS = ["page", "filter"];
+    WINDOW_DATA_KEYS.forEach((key) => {
+      if (windowData[key]) {
+        this[key] = windowData[key];
+      }
+    });
   },
   computed: {
     // #   Q    P
@@ -168,6 +179,12 @@ export default {
     hasNextPage() {
       return this.filteredTickers.length > this.endIndex;
     },
+    pageStateOptions() {
+      return {
+        filter: this.filter,
+        page: this.page,
+      };
+    },
   },
   methods: {
     // TODO:
@@ -189,7 +206,6 @@ export default {
     add(tickerToAdd) {
       this.tickers.push(tickerToAdd);
       this.subscribeToTickerUpdate(tickerToAdd);
-
       localStorageManager.update(this.tickers);
     },
     remove(tickerToRemove) {
@@ -208,6 +224,28 @@ export default {
     },
     handleLoaded() {
       this.showLoader = false;
+    },
+  },
+  watch: {
+    filter() {
+      this.page = 1;
+    },
+    paginatedTickers() {
+      if (this.paginatedTickers.length === 0 && this.page > 1) {
+        this.page -= 1;
+      }
+    },
+    pageStateOptions(pageStateOptions) {
+      const searchParams = Object.keys(pageStateOptions);
+      const currentUrl = new URL(window.location.href);
+
+      searchParams.forEach((param) => {
+        currentUrl.searchParams.set(param, pageStateOptions[param]);
+      });
+
+      const updatedURL = currentUrl.toString();
+
+      window.history.pushState(null, document.title, updatedURL);
     },
   },
 };
