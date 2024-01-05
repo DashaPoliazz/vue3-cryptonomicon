@@ -1,11 +1,21 @@
 <template>
   <section class="relative">
-    <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">VUE - USD</h3>
-    <div class="flex items-end border-gray-600 border-b border-l h-64">
-      <div class="bg-purple-800 border w-10 h-24"></div>
-      <div class="bg-purple-800 border w-10 h-32"></div>
-      <div class="bg-purple-800 border w-10 h-48"></div>
-      <div class="bg-purple-800 border w-10 h-16"></div>
+    <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
+      {{ selectedTicker.baseAsset }} - {{ selectedTicker.quoteAsset }}
+    </h3>
+    <div
+      ref="chart"
+      class="flex items-end border-gray-600 border-b border-l h-64"
+    >
+      <div
+        ref="chartElement"
+        v-for="(percentage, idx) of normalizedPrices"
+        :key="idx"
+        :style="{
+          height: `${percentage}%`,
+        }"
+        class="bg-purple-800 border w-10"
+      ></div>
     </div>
     <button type="button" class="absolute top-0 right-0">
       <svg
@@ -34,7 +44,55 @@
 </template>
 
 <script>
-export default {};
+const CHART_ELEMENT_MIN_WIDTH = 10;
+
+export default {
+  props: {
+    selectedTicker: Object,
+    prices: Array,
+  },
+  mounted() {
+    window.addEventListener("resize", this.calculateMaxChartElements);
+    setImmediate(() => this.calculateMaxChartElements());
+  },
+  beforeUnmount() {
+    window.removeEventListener("resize", this.calculateMaxChartElements);
+  },
+  data() {
+    return {
+      maxChartElements: 1,
+    };
+  },
+  methods: {
+    calculateMaxChartElements() {
+      if (!this.$refs.chart) return;
+
+      this.maxChartElements =
+        this.$refs.chart.clientWidth / CHART_ELEMENT_MIN_WIDTH;
+    },
+  },
+  computed: {
+    normalizedPrices() {
+      const maxValue = Math.max(...this.prices);
+      const minValue = Math.min(...this.prices);
+
+      if (maxValue === minValue) {
+        return this.prices.map(() => 50);
+      }
+
+      return this.prices.map(
+        (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      );
+    },
+  },
+  watch: {
+    normalizedPrices() {
+      while (this.normalizedPrices.length > this.maxChartElements) {
+        this.normalizedPrices.shift();
+      }
+    },
+  },
+};
 </script>
 
 <style></style>

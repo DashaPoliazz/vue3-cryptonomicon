@@ -96,7 +96,11 @@
         </dl>
         <hr class="w-full border-t border-gray-600 my-4" />
       </template>
-      <tickers-chart />
+      <tickers-chart
+        v-if="selectedTicker"
+        :selectedTicker="selectedTicker"
+        :prices="prices"
+      />
     </div>
   </div>
 </template>
@@ -122,6 +126,7 @@ export default {
   data() {
     return {
       tickers: [],
+      prices: [],
 
       page: 1,
       filter: "",
@@ -195,7 +200,13 @@ export default {
         (ticker) => ticker.name === tickerName.toUpperCase()
       );
 
-      tickers.forEach((ticker) => (ticker.price = newPrice));
+      tickers.forEach((ticker) => {
+        ticker.price = newPrice;
+
+        if (ticker === this.selectedTicker) {
+          this.prices.push(newPrice);
+        }
+      });
     },
     subscribeToTickerUpdate(ticker) {
       const tickerName = ticker.name.toLowerCase();
@@ -246,6 +257,9 @@ export default {
       const updatedURL = currentUrl.toString();
 
       window.history.pushState(null, document.title, updatedURL);
+    },
+    selectedTicker() {
+      this.prices = [];
     },
   },
 };
