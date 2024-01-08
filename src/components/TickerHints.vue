@@ -20,6 +20,7 @@ export default {
   props: {
     filter: String,
   },
+  emits: ["onHintClick", "onLoaded"],
   mounted() {
     fetchAllTickers()
       .then((hints) => {

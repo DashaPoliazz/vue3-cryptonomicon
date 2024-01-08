@@ -17,7 +17,11 @@
         class="bg-purple-800 border w-10"
       ></div>
     </div>
-    <button type="button" class="absolute top-0 right-0">
+    <button
+      @click="$emit('onChartClose', true)"
+      type="button"
+      class="absolute top-0 right-0"
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         xmlns:xlink="http://www.w3.org/1999/xlink"

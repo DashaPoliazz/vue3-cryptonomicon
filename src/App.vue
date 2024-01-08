@@ -86,8 +86,9 @@
         <hr class="w-full border-t border-gray-600 my-4" />
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <ticker-info
-            @removeTicker="remove"
             @click="selectedTicker = tickerData"
+            @removeTicker="remove"
+            @onModalOpen="handleModalOpen"
             v-for="(tickerData, idx) of paginatedTickers"
             :key="idx"
             :tickerData="tickerData"
@@ -98,10 +99,19 @@
       </template>
       <tickers-chart
         v-if="selectedTicker"
+        @onChartClose="handleChartClose"
         :selectedTicker="selectedTicker"
         :prices="prices"
       />
     </div>
+    <modal-window :isOpen="isOpen" @onModalClose="handleModalClose">
+      <template #modal>
+        <p>
+          Are you sure you want to remove selected ticker -
+          {{ selectedTicker?.name }}?
+        </p>
+      </template>
+    </modal-window>
   </div>
 </template>
 
@@ -111,6 +121,7 @@ import AddTicker from "./components/AddTicker.vue";
 import TickerInfo from "./components/TickerInfo.vue";
 import TickersChart from "./components/TickersChart.vue";
 import { LocalStorageManager } from "./utils/LocalStorageManager.js";
+import ModalWindow from "./components/ModalWindow.vue";
 
 const ELEMENTS_PER_PAGE = 6;
 const LOCAL_STORAGE_KEY = "CRYPTONOMICON";
@@ -122,6 +133,7 @@ export default {
     AddTicker,
     TickerInfo,
     TickersChart,
+    ModalWindow,
   },
   data() {
     return {
@@ -133,6 +145,7 @@ export default {
 
       showLoader: true,
       selectedTicker: null,
+      isOpen: false,
     };
   },
   created() {},
@@ -235,6 +248,15 @@ export default {
     },
     handleLoaded() {
       this.showLoader = false;
+    },
+    handleChartClose() {
+      this.selectedTicker = null;
+    },
+    handleModalClose() {
+      this.isOpen = false;
+    },
+    handleModalOpen() {
+      this.isOpen = true;
     },
   },
   watch: {

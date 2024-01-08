@@ -53,6 +53,9 @@ export default {
   methods: {
     handleClick() {
       this.$emit("removeTicker", this.tickerData);
+      if (this.isSelected) {
+        this.$emit("onModalOpen");
+      }
     },
   },
 };

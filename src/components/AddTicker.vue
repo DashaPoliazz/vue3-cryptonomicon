@@ -16,7 +16,6 @@
             placeholder="Например DOGE"
           />
         </div>
-        <!-- Why i can't catch onLoaded in App.vue on <add-ticker /> ? -->
         <ticker-hints
           :filter="tickerName"
           @onHintClick="handleTickerAdd"
