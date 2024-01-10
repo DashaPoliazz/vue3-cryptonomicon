@@ -43,6 +43,7 @@ export default {
     tickerData: Object,
     isSelected: Boolean,
   },
+  emits: ["onModalOpen", "onTickerRemove"],
   computed: {
     formattedPrice() {
       const price = Number(this.tickerData.price);

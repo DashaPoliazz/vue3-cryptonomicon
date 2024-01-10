@@ -1,13 +1,9 @@
 <template>
-  <div class="text-sm text-red-600">{{ errorMessage }}</div>
+  <slot></slot>
 </template>
 
 <script>
-export default {
-  props: {
-    errorMessage: String,
-  },
-};
+export default {};
 </script>
 
 <style></style>

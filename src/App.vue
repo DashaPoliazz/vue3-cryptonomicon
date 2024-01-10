@@ -27,7 +27,14 @@
       </svg>
     </div>
     <div class="container">
-      <add-ticker @addTicker="add" @onLoaded="handleLoaded" />
+      <add-ticker
+        @addTicker="add"
+        @onLoaded="handleLoaded"
+        @onErrorsReset="handleErrorsReset"
+        @onEmptyTickerNameAdd="handleEmptyTickerNameAdd"
+        :isDuplicateExist="isDuplicateExistError"
+        :isEmptyTickerName="isEmptyTickerNameError"
+      />
       <!-- Pagination -->
       <div class="mt-1 relative rounded-md shadow-md">
         <input
@@ -87,7 +94,7 @@
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <ticker-info
             @click="selectedTicker = tickerData"
-            @removeTicker="remove"
+            @onTickerRemove="remove"
             @onModalOpen="handleModalOpen"
             v-for="(tickerData, idx) of paginatedTickers"
             :key="idx"
@@ -104,12 +111,21 @@
         :prices="prices"
       />
     </div>
-    <modal-window :isOpen="isOpen" @onModalClose="handleModalClose">
+    <modal-window ref="modalWindowRef" @onModalClose="handleModalClose">
       <template #modal>
         <p>
           Are you sure you want to remove selected ticker -
           {{ selectedTicker?.name }}?
         </p>
+        <p>
+          Please, enter "{{
+            $options.CONFIRMATION_TEXT + " " + selectedTicker.name
+          }}" to remove ticker
+        </p>
+        <input
+          v-model="confirmation"
+          class="block w-full pr-10 p-2 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
+        />
       </template>
     </modal-window>
   </div>
@@ -145,10 +161,14 @@ export default {
 
       showLoader: true,
       selectedTicker: null,
-      isOpen: false,
+
+      confirmation: "",
+
+      isDuplicateExistError: false,
+      isEmptyTickerNameError: false,
     };
   },
-  created() {},
+  CONFIRMATION_TEXT: "REMOVE",
   mounted() {
     const savedTickers = localStorageManager.read();
     if (savedTickers) {
@@ -203,11 +223,14 @@ export default {
         page: this.page,
       };
     },
+    isConfirmationValid() {
+      return this.confirmation === this.$options.CONFIRMATION_TEXT;
+    },
+    confirmationInputPlaceholderText() {
+      return `REMOVE ${this.selectedTicker.name}`;
+    },
   },
   methods: {
-    // TODO:
-    // Unify tickerName contract
-    //  - Remove strange toLowerCase, toUpperaCase
     updateTicker(tickerName, newPrice) {
       const tickers = this.tickers.filter(
         (ticker) => ticker.name === tickerName.toUpperCase()
@@ -227,7 +250,19 @@ export default {
         this.updateTicker(tickerName, newPrice);
       });
     },
+    isDuplicateTickerExist(tickerToCheck) {
+      const doublicate = this.tickers.find(
+        (ticker) => ticker.name === tickerToCheck.name
+      );
+
+      return doublicate ? true : false;
+    },
     add(tickerToAdd) {
+      if (this.isDuplicateTickerExist(tickerToAdd)) {
+        this.isDuplicateExistError = true;
+        return;
+      }
+
       this.tickers.push(tickerToAdd);
       this.subscribeToTickerUpdate(tickerToAdd);
       localStorageManager.update(this.tickers);
@@ -237,6 +272,9 @@ export default {
       unsubscribeToTicker(tickerName);
 
       this.tickers = this.tickers.filter((ticker) => ticker !== tickerToRemove);
+      if (tickerToRemove === this.selectedTicker) {
+        this.selectedTicker = null;
+      }
 
       localStorageManager.update(this.tickers);
     },
@@ -255,8 +293,24 @@ export default {
     handleModalClose() {
       this.isOpen = false;
     },
-    handleModalOpen() {
-      this.isOpen = true;
+    async handleModalOpen() {
+      const modalWindow = this.$refs.modalWindowRef;
+      const modalWindowResult = await modalWindow.open();
+
+      const CONFIRMATION_TEXT =
+        this.$options.CONFIRMATION_TEXT + " " + this.selectedTicker.name;
+      const isValidConfirmation = this.confirmation === CONFIRMATION_TEXT;
+
+      if (modalWindowResult && isValidConfirmation) {
+        this.remove(this.selectedTicker);
+      }
+    },
+    handleErrorsReset() {
+      this.isDuplicateExistError = false;
+      this.isEmptyTickerNameError = false;
+    },
+    handleEmptyTickerNameAdd() {
+      this.isEmptyTickerNameError = true;
     },
   },
   watch: {

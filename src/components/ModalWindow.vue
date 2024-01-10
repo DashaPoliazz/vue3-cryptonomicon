@@ -1,6 +1,7 @@
 <template>
   <div
     v-if="isOpen"
+    ref="modal"
     id="popup-modal"
     tabindex="-1"
     class="overflow-y-aut overflow-x-hidden fixed top-0 right-0 left-0 z-50 justify-center items-center w-full md:inset-0 h-[calc(100%-1rem)] max-h-full"
@@ -15,7 +16,7 @@
     >
       <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
         <button
-          @click="$emit('onModalClose')"
+          @click="close"
           type="button"
           class="absolute top-3 end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white"
           data-modal-hide="popup-modal"
@@ -57,20 +58,10 @@
             <slot name="modal"></slot>
           </h3>
           <button
-            @click="$emit('onModalClose')"
-            data-modal-hide="popup-modal"
-            type="button"
+            @click="confirm"
             class="text-white bg-red-600 hover:bg-red-800 focus:ring-4 focus:outline-none focus:ring-red-300 dark:focus:ring-red-800 font-medium rounded-lg text-sm inline-flex items-center px-5 py-2.5 text-center me-2"
           >
-            Yes, I'm sure
-          </button>
-          <button
-            @click="$emit('onModalClose')"
-            data-modal-hide="popup-modal"
-            type="button"
-            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
-          >
-            No, cancel
+            I Confirm
           </button>
         </div>
       </div>
@@ -80,11 +71,60 @@
 
 <script>
 export default {
-  props: {
-    isOpen: { type: Boolean, required: true },
+  props: {},
+  data() {
+    return {
+      isOpen: false,
+    };
   },
-  emits: ["onModalClose"],
-  methods: {},
+  modalController: null,
+  mounted() {
+    window.addEventListener("click", this.handleWindowClick);
+    window.addEventListener("keydown", this.handleWindowKeydown);
+  },
+  beforeUnmount() {
+    window.removeEventListener("click", this.handleWindowClick);
+    window.addEventListener("keydown", this.handleWindowKeydown);
+  },
+  methods: {
+    open() {
+      let resolve;
+      let reject;
+
+      const modalPromise = new Promise((ok, fail) => {
+        resolve = ok;
+        reject = fail;
+      });
+
+      this.$options.modalController = { resolve, reject };
+      this.isOpen = true;
+
+      return modalPromise;
+    },
+    confirm() {
+      this.$options.modalController.resolve(true);
+      this.isOpen = false;
+    },
+    close() {
+      this.$options.modalController.resolve(false);
+      this.isOpen = false;
+    },
+    handleWindowClick(e) {
+      const modalElement = this.$refs.modal;
+      if (!modalElement) {
+        return;
+      }
+
+      if (e.target === modalElement) {
+        this.close();
+      }
+    },
+    handleWindowKeydown(e) {
+      if (this.isOpen && e.key === "Escape") {
+        this.close();
+      }
+    },
+  },
 };
 </script>
 

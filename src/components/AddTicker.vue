@@ -13,7 +13,7 @@
             name="wallet"
             id="wallet"
             class="block w-full pr-10 p-2 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
-            placeholder="Например DOGE"
+            placeholder="e.g. DOGE"
           />
         </div>
         <ticker-hints
@@ -21,7 +21,14 @@
           @onHintClick="handleTickerAdd"
           @onLoaded="$emit('onLoaded', true)"
         />
-        <ticker-error />
+        <ticker-error v-if="isDuplicateExist">
+          <div class="text-sm text-red-600">Ticker has already been added</div>
+        </ticker-error>
+        <ticker-error v-if="isEmptyTickerName">
+          <div class="text-sm text-red-600">
+            Please, enter ticker you want to add
+          </div>
+        </ticker-error>
       </div>
     </div>
     <button
@@ -56,6 +63,17 @@ export default {
     TickerHints,
     TickerError,
   },
+  props: {
+    isDuplicateExist: { type: Boolean, required: true },
+    isEmptyTickerName: { type: Boolean, required: true },
+  },
+  emits: [
+    "onLoaded",
+    "onDuplicate",
+    "addTicker",
+    "onErrorsReset",
+    "onEmptyTickerNameAdd",
+  ],
   data() {
     return {
       tickerName: "",
@@ -81,7 +99,17 @@ export default {
             price: null,
           });
 
+      if (!newTicker.name.length) {
+        this.$emit("onEmptyTickerNameAdd");
+        return;
+      }
+
       this.$emit("addTicker", newTicker);
+    },
+  },
+  watch: {
+    tickerName() {
+      this.$emit("onErrorsReset");
     },
   },
 };
